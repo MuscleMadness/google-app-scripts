@@ -11,11 +11,11 @@ function exportWeeklyPlanData() {
   const sheet = ss.getActiveSheet();
   const dataRange = sheet.getDataRange();
   const dataValues = dataRange.getValues();
-  
+
   // Read the values starting from E11
   const coachName = sheet.getRange("F11").getValue();
   const gymName = sheet.getRange("F12").getValue();
-  
+
   const coach = {
     name: coachName,
     gymName: gymName
@@ -31,10 +31,10 @@ function exportWeeklyPlanData() {
     focusAreas: Array.from(new Set(dataValues.slice(1).flatMap(row => row[10].split(';')))),
     duration: dataValues[1][11],
     preferences: Array.from(new Set(dataValues.slice(1).flatMap(row => row[12].split(';')))),
-    coach : coach,
-    createdDate : createdDate
+    coach: coach,
+    createdDate: createdDate
   };
-  
+
   const maxRow = 7;
   for (let i = 1; i < 6; i++) {
     const row = dataValues[i];
@@ -49,7 +49,7 @@ function exportWeeklyPlanData() {
     };
     jsonOutput.days.push(dayObject);
   }
-  
+
   Logger.log(JSON.stringify(jsonOutput, null, 2));
   return jsonOutput;
 }
@@ -60,86 +60,101 @@ function showJSONInDialog() {
     .setWidth(600)
     .setHeight(400);
   SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'JSON Output');
-  
+
   // Pass the JSON data to the HTML file
   const script = `<script>displayJSON(${JSON.stringify(jsonOutput)});</script>`;
   htmlOutput.append(script);
   SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'JSON Output');
 }
 
-
 function exportMasterData() {
-  // Get the active spreadsheet and the first sheet
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = spreadsheet.getSheets()[0];
-  
-  // Get all the data in the sheet
+
   var data = sheet.getDataRange().getValues();
-  
-  // Get the headers
   var headers = data[0];
-  
-  // Initialize an array to hold the JSON objects
-  var jsonArray = [];
-  
-  // Loop through the rows of data, starting from the second row
+
+  var jsonArrayEn = [];
+  var jsonArrayTa = [];
+
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
-    var jsonObject = {};
-    
-    // Loop through the columns
+    var jsonObjectEn = {};
+    var jsonObjectTa = {};
+
     for (var j = 0; j < headers.length; j++) {
       var header = headers[j];
       var value = row[j];
 
-      // Ignore the 'instructions' column
-      if (header === 'instructions') {
-        // continue;
+      if (header === 'instructions(en)') {
+        // continue; // Skip instructions column
       }
 
-      // Check if the column should be an array
-      if (header === 'primaryMuscles' || header === 'secondaryMuscles' || header === 'images' || header === 'videos') {
-        // Split the value into an array
-        jsonObject[header] = value ? value.split(',') : [];
+      const headerKey = header.replace(/\s*\((en|ta)\)\s*/g, ''); // Remove language code
+
+      if (['primaryMuscles', 'secondaryMuscles', 'images'].includes(header)) {
+        jsonObjectEn[header] = value ? value.split(',') : [];
+        jsonObjectTa[header] = value ? value.split(',') : [];
+      } else if (header.endsWith('(en)')) {
+        if (typeof value === 'string' && value.startsWith('[')) {
+          value = JSON.parse(value);
+          jsonObjectEn[headerKey] = value ? value : [];
+        } else {
+          jsonObjectEn[headerKey] = value ? value.split(',') : [];
+        }
+      } else if (header.endsWith('(ta)')) {
+         if (typeof value === 'string' && value.startsWith('[')) {
+          try {
+          value = JSON.parse(value);
+          } catch (e) {
+          console.log(value)
+          jsonObjectTa[headerKey] = value ? value.split(',') : [];
+
+          }
+          jsonObjectTa[headerKey] = value ? value : [];
+        } else {
+          jsonObjectTa[headerKey] = value ? value.split(',') : [];
+        }
       } else {
-        jsonObject[header] = value;
+        jsonObjectEn[header] = value;
+        jsonObjectTa[header] = value;
       }
+
     }
-    
-    // Add the JSON object to the array
-    jsonArray.push(jsonObject);
+
+    jsonArrayEn.push(jsonObjectEn);
+    jsonArrayTa.push(jsonObjectTa);
   }
-  
-  // Convert the array to a JSON string
-  var jsonString = JSON.stringify(jsonArray, null, 2);
-  
-  // Get the folder of the active spreadsheet
+
+  var jsonStringEn = JSON.stringify(jsonArrayEn, null, 2);
+  var jsonStringTa = JSON.stringify(jsonArrayTa, null, 2);
+
   var fileId = spreadsheet.getId();
   var file = DriveApp.getFileById(fileId);
   var folder = file.getParents().next();
-  
-  // Create a file in the same folder
-  var jsonFile = folder.createFile('Workouts.json', jsonString, MimeType.PLAIN_TEXT);
-  
-  // Get the download URL
-  var downloadUrl = jsonFile.getDownloadUrl();
-  
-  // Log the download URL
-  Logger.log('Download URL: ' + downloadUrl);
-  
-  // Optionally, you can return the download URL
-  return downloadUrl;
+
+  var jsonFileEn = folder.createFile('Workouts_en.json', jsonStringEn, MimeType.PLAIN_TEXT);
+  var jsonFileTa = folder.createFile('Workouts_ta.json', jsonStringTa, MimeType.PLAIN_TEXT);
+
+  Logger.log('Download URL (EN): ' + jsonFileEn.getDownloadUrl());
+  Logger.log('Download URL (TA): ' + jsonFileTa.getDownloadUrl());
+
+  return {
+    en: jsonFileEn.getDownloadUrl(),
+    ta: jsonFileTa.getDownloadUrl()
+  };
 }
+
 
 function applyDataValidation() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const plannerSheet = ss.getSheetByName('planner');
   const dataSheet = ss.getSheetByName('data');
-  
+
   // Get all data from the data sheet
   const dataRange = dataSheet.getDataRange();
   const dataValues = dataRange.getValues();
-  
+
   const muscleGroupMap = {};
   for (let i = 1; i < dataValues.length; i++) {
     const muscleGroup = dataValues[i][13]; // Assuming muscleGroups is in the 13th column (index 12)
@@ -152,7 +167,7 @@ function applyDataValidation() {
       console.log(level);
       console.log(popularity);
     }
-    
+
     // Apply additional conditions: level should be 'beginner' and popularity should be greater than 2
     if (level === 'beginner' && popularity >= 4) {
       if (!muscleGroupMap[muscleGroup]) {
@@ -165,12 +180,12 @@ function applyDataValidation() {
   // Get all data from the workouts sheet
   const workoutsRange = plannerSheet.getDataRange();
   const workoutsValues = workoutsRange.getValues();
-  
+
   // Apply data validation to column C based on the muscle group in column B
   for (let i = 1; i < workoutsValues.length; i++) {
     const muscleGroup = workoutsValues[i][1]; // Assuming muscleGroups is in the 2nd column (index 1)
     const cell = plannerSheet.getRange(i + 1, 3); // Column C (index 2)
-    
+
     if (muscleGroupMap[muscleGroup]) {
       const rule = SpreadsheetApp.newDataValidation()
         .requireValueInList(muscleGroupMap[muscleGroup])
