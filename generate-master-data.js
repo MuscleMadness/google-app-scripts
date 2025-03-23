@@ -125,15 +125,15 @@ function saveJsonToFolder(filename, jsonString, makePublic = false) {
     Logger.log('File URL (Private): ' + file.getUrl()); // Log private URL
   }
 
-   // Get the file ID
+  // Get the file ID
   var fileId = file.getId();
   var fileUrl = file.getUrl();
 
   // Show the file ID in a dialog
   SpreadsheetApp.getUi().alert(
-    "✅ File Saved Successfully!\n\n" + 
-    "File ID: " + fileId + "\n\n" + 
-    "URL: " + fileUrl + "\n\n" + 
+    "✅ File Saved Successfully!\n\n" +
+    "File ID: " + fileId + "\n\n" +
+    "URL: " + fileUrl + "\n\n" +
     "Copy this ID for future reference."
   );
 
@@ -143,7 +143,15 @@ function saveJsonToFolder(filename, jsonString, makePublic = false) {
 function exportPlanner() {
   const jsonOutput = exportWeeklyPlanData();
   var jsonStringEn = JSON.stringify(jsonOutput, null, 2);
-  saveJsonToFolder("planner.json", jsonStringEn, true);
+
+  // Get current timestamp in YYYYMMDD_HHmmss format
+  const now = new Date();
+  const timestamp = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd_HH:mm:ss");
+
+  // Append timestamp to the file name
+  const fileName = `planner_${timestamp}.json`;
+
+  saveJsonToFolder(fileName, jsonStringEn, true);
 }
 
 function exportMasterData() {
@@ -294,8 +302,8 @@ function onEdit(e) {
 
 function showWorkoutsSidebar() {
   var html = HtmlService.createHtmlOutputFromFile('WorkoutsSideBar')
-      .setTitle('Choose workouts')
-      .setWidth(300);
+    .setTitle('Choose workouts')
+    .setWidth(300);
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
@@ -314,7 +322,7 @@ function getItems() {
   const selectedRow = activeCell.getRow(); // Get the row of the active cell
   const selectedMuscleGroups = plannerSheet.getRange(selectedRow, 2).getValue().split(',').map(group => group.trim()).filter(String); // Read the value from column C, split by commas, trim whitespace, and filter empty values
 
-Logger.log('selectedMuscleGroups ' + selectedMuscleGroups);
+  Logger.log('selectedMuscleGroups ' + selectedMuscleGroups);
   if (selectedMuscleGroups.length === 0) {
     Logger.log("No muscle groups selected.");
     return [];
