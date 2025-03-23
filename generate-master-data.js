@@ -1,7 +1,8 @@
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Workout Planner')
-    .addItem('Export Planner', 'showJSONInDialog')
+    .addItem('Export Planner', 'exportPlanner')
+    .addItem('Choose workouts', 'showWorkoutsSidebar')
     .addItem('Export MasterData', 'exportMasterData')
     .addItem('Export Equipments', 'convertEquipmentsToJson')
     .addToUi();
@@ -37,7 +38,7 @@ function exportWeeklyPlanData() {
   };
 
   const maxRow = 7;
-  for (let i = 1; i < 6; i++) {
+  for (let i = 1; i <= 6; i++) {
     const row = dataValues[i];
     const dayObject = {
       day: row[0],
@@ -72,7 +73,7 @@ function convertEquipmentsToJson() {
     var exercises = row[3] ? row[3].split(", ") : [];
     var enVideo = row[4] ? [row[4]] : [];
     var taVideo = row[5] ? [row[5]] : [];
-    
+
     jsonDataEn.push({
       id: row[0],          // Equipment ID
       name: row[1],        // Equipment Name
@@ -101,7 +102,7 @@ function convertEquipmentsToJson() {
   Logger.log("JSON files saved in the same folder as the Google Sheet.");
 }
 
-function saveJsonToFolder(filename, jsonString) {
+function saveJsonToFolder(filename, jsonString, makePublic = false) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetFile = DriveApp.getFileById(ss.getId());
   var parentFolder = sheetFile.getParents().next(); // Get parent folder
@@ -114,21 +115,35 @@ function saveJsonToFolder(filename, jsonString) {
   }
 
   // Create new JSON file in the sheet’s folder
-  parentFolder.createFile(filename, jsonString, MimeType.PLAIN_TEXT);
+  var file = parentFolder.createFile(filename, jsonString, MimeType.PLAIN_TEXT);
+
+  // Set the file to public view if the parameter is true
+  if (makePublic) {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    Logger.log('File URL (Public): ' + file.getUrl()); // Log public URL
+  } else {
+    Logger.log('File URL (Private): ' + file.getUrl()); // Log private URL
+  }
+
+   // Get the file ID
+  var fileId = file.getId();
+  var fileUrl = file.getUrl();
+
+  // Show the file ID in a dialog
+  SpreadsheetApp.getUi().alert(
+    "✅ File Saved Successfully!\n\n" + 
+    "File ID: " + fileId + "\n\n" + 
+    "URL: " + fileUrl + "\n\n" + 
+    "Copy this ID for future reference."
+  );
+
+  Logger.log('File URL: ' + fileUrl);
 }
 
-
-function showJSONInDialog() {
+function exportPlanner() {
   const jsonOutput = exportWeeklyPlanData();
-  const htmlOutput = HtmlService.createHtmlOutputFromFile('PlannerDialogue')
-    .setWidth(600)
-    .setHeight(400);
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'JSON Output');
-
-  // Pass the JSON data to the HTML file
-  const script = `<script>displayJSON(${JSON.stringify(jsonOutput)});</script>`;
-  htmlOutput.append(script);
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'JSON Output');
+  var jsonStringEn = JSON.stringify(jsonOutput, null, 2);
+  saveJsonToFolder("planner.json", jsonStringEn, true);
 }
 
 function exportMasterData() {
@@ -240,7 +255,7 @@ function applyDataValidation() {
   }
 
   // Get all data from the workouts sheet
-  const workoutsRange = plannerSheet.getDataRange();
+  const workoutsRange = plannerSheet.getRange(1, 1, 8, plannerSheet.getLastColumn());
   const workoutsValues = workoutsRange.getValues();
   //console.log(workoutsValues)
 
@@ -256,7 +271,96 @@ function applyDataValidation() {
         .build();
       cell.setDataValidation(rule);
     } else {
-     // cell.clearDataValidations();
+      // cell.clearDataValidations();
     }
   }
 }
+
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet(); // Get the active sheet
+  const range = e.range; // Get the edited range
+
+  // Check if the edited sheet is the 'planner' sheet
+  if (sheet.getName() === 'planner') {
+    const editedRow = range.getRow(); // Get the row of the edited cell
+    const editedColumn = range.getColumn(); // Get the column of the edited cell
+
+    // Check if the edited cell is within columns C (3rd column) and rows 2 to 7
+    if (editedColumn === 3 && editedRow >= 2 && editedRow <= 7) {
+      showWorkoutsSidebar(); // Call the showWorkoutsSidebar function
+    }
+  }
+}
+
+function showWorkoutsSidebar() {
+  var html = HtmlService.createHtmlOutputFromFile('WorkoutsSideBar')
+      .setTitle('Choose workouts')
+      .setWidth(300);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+function getItems() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const plannerSheet = ss.getSheetByName('planner');
+  const dataSheet = ss.getSheetByName('Data');
+
+  if (!plannerSheet || !dataSheet) {
+    Logger.log("Planner or Data sheet not found!");
+    return [];
+  }
+
+  // Get the selected muscle groups from the active row in column C
+  const activeCell = plannerSheet.getActiveCell(); // Get the active cell
+  const selectedRow = activeCell.getRow(); // Get the row of the active cell
+  const selectedMuscleGroups = plannerSheet.getRange(selectedRow, 2).getValue().split(',').map(group => group.trim()).filter(String); // Read the value from column C, split by commas, trim whitespace, and filter empty values
+
+Logger.log('selectedMuscleGroups ' + selectedMuscleGroups);
+  if (selectedMuscleGroups.length === 0) {
+    Logger.log("No muscle groups selected.");
+    return [];
+  }
+
+  // Get additional filter criteria from C11 to C13
+  const popularity = plannerSheet.getRange("C11").getValue();
+  const level = plannerSheet.getRange("C12").getValue();
+  const equipments = plannerSheet.getRange("C13").getValue();
+  Logger.log(popularity + ' ' + level + ' ' + equipments);
+
+  // Get all data from the Data sheet
+  const dataRange = dataSheet.getRange(2, 1, dataSheet.getLastRow() - 1, dataSheet.getLastColumn());
+  const dataValues = dataRange.getValues();
+
+  // Filter the data based on the selected muscle groups and additional criteria
+  const filteredItems = dataValues
+    .filter(row => {
+      const muscleGroups = row[15]; // Column P (index 15)
+      const rowPopularity = row[3]; // Column D (index 3)
+      const rowLevel = row[4]; // Column E (index 4)
+      const rowEquipment = row[6]; // Column G (index 6)
+
+      if (!muscleGroups) return false;
+
+      // Check if any selected muscle group matches the muscle groups in the row
+      const matchesMuscleGroups = selectedMuscleGroups.some(selectedGroup =>
+        muscleGroups.split(',').map(g => g.trim()).includes(selectedGroup)
+      );
+
+      // Check if the row matches the additional criteria
+      const matchesPopularity = rowPopularity >= popularity;
+      const matchesLevel = rowLevel === level;
+      const matchesEquipment = equipments.includes(rowEquipment);
+
+      return matchesMuscleGroups && matchesPopularity && matchesLevel && matchesEquipment;
+    })
+    .map(row => row[0]); // Get the IDs from column A (index 0)
+
+  Logger.log(`Filtered Items: ${filteredItems}`);
+  return filteredItems;
+}
+
+function writeToSheet(selectedItems) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var cell = sheet.getActiveCell();
+  cell.setValue(selectedItems.join(", ")); // Join array items with comma and space
+}
+
